@@ -1,0 +1,25 @@
+name: 定时任务看门狗
+on:
+  schedule:
+    - cron: '23 7 * * 1-5'   # 北京 15:23 检查今天是否跑过
+permissions:
+  actions: write
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: 今天没有运行记录则补触发
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TODAY=$(TZ=Asia/Shanghai date +%F)
+          COUNT=$(curl -s -H "Authorization: Bearer $GH_TOKEN" \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/runs?created=>=${TODAY}" | jq '.total_count')
+          echo "今天已有 ${COUNT} 次运行"
+          if [ "$COUNT" -eq 0 ]; then
+            echo "检测到今天的定时任务被丢弃，手动补触发"
+            curl -s -X POST -H "Authorization: Bearer $GH_TOKEN" \
+              -H "Accept: application/vnd.github+json" \
+              "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/workflows/00-daily-analysis.yml/dispatches" \
+              -d '{"ref":"main","inputs":{"mode":"full"}}'
+          fi
